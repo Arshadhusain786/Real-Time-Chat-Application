@@ -10,8 +10,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import javax.sql.DataSource;
 
 /**
- * Fixes legacy schema issues that JPA ddl-auto=update cannot handle
- * (dropping columns, changing NOT NULL to NULL on existing columns).
+ * Fixes legacy schema issues that JPA ddl-auto=update cannot handle.
+ * Uses PostgreSQL-compatible syntax.
  */
 @Configuration
 @Slf4j
@@ -25,30 +25,22 @@ public class DatabaseMigrationConfig {
         return args -> {
             JdbcTemplate jdbc = new JdbcTemplate(dataSource);
 
-            // Fix 1: Make receiver_id nullable (legacy column from old schema)
-            try {
-                jdbc.execute("ALTER TABLE messages MODIFY COLUMN receiver_id BIGINT NULL");
-                log.info("Schema fix: messages.receiver_id set to nullable");
-            } catch (Exception e) {
-                // Column might not exist or already fixed - that's fine
-                log.debug("Schema fix skipped for messages.receiver_id: {}", e.getMessage());
-            }
+            // Make receiver_id nullable if it exists (legacy column)
+            safeExecute(jdbc, "ALTER TABLE messages ALTER COLUMN receiver_id DROP NOT NULL",
+                    "messages.receiver_id set to nullable");
 
-            // Fix 2: Make conversations.name nullable (DIRECT chats have no name)
-            try {
-                jdbc.execute("ALTER TABLE conversations MODIFY COLUMN name VARCHAR(100) NULL");
-                log.info("Schema fix: conversations.name set to nullable");
-            } catch (Exception e) {
-                log.debug("Schema fix skipped for conversations.name: {}", e.getMessage());
-            }
-
-            // Fix 3: Add type column if missing
-            try {
-                jdbc.execute("ALTER TABLE conversations ADD COLUMN IF NOT EXISTS type VARCHAR(10) DEFAULT 'DIRECT'");
-                log.debug("Schema fix: conversations.type ensured");
-            } catch (Exception e) {
-                log.debug("Schema fix skipped for conversations.type: {}", e.getMessage());
-            }
+            // Make conversations.name nullable (DIRECT chats have no name)
+            safeExecute(jdbc, "ALTER TABLE conversations ALTER COLUMN name DROP NOT NULL",
+                    "conversations.name set to nullable");
         };
+    }
+
+    private void safeExecute(JdbcTemplate jdbc, String sql, String description) {
+        try {
+            jdbc.execute(sql);
+            log.info("Schema fix: {}", description);
+        } catch (Exception e) {
+            log.debug("Schema fix skipped ({}): {}", description, e.getMessage());
+        }
     }
 }

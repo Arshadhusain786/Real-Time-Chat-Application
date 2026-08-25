@@ -2,6 +2,7 @@
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /app
 COPY pom.xml .
+RUN mvn dependency:go-offline -q
 COPY src ./src
 RUN mvn clean package -DskipTests -q
 
@@ -13,6 +14,8 @@ COPY --from=build /app/target/*.jar app.jar
 # Create uploads directory
 RUN mkdir -p /app/uploads
 
-EXPOSE 8081
+# Render uses PORT env var
+ENV PORT=8081
+EXPOSE ${PORT}
 
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-jar", "app.jar", "--server.port=${PORT}"]

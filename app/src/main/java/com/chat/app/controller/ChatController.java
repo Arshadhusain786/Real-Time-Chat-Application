@@ -494,7 +494,13 @@ public class ChatController {
         return ResponseEntity.ok(result);
     }
 
-    @GetMapping({"/", "/chat"})
+    @GetMapping("/")
+    @ResponseBody
+    public ResponseEntity<?> home() {
+        return ResponseEntity.ok(Map.of("message", "Hello World"));
+    }
+
+    @GetMapping("/chat")
     public String chat() {
         return "chat";
     }
