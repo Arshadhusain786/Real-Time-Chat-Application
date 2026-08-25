@@ -153,6 +153,24 @@ function showApp() {
     loadConversations();
     connectWebSocket();
     requestNotificationPermission();
+    // Start polling fallback for when WebSocket drops (Render free tier)
+    startPolling();
+}
+
+// Polling fallback: refresh conversations every 15s to catch missed messages
+let pollInterval = null;
+function startPolling() {
+    if (pollInterval) clearInterval(pollInterval);
+    pollInterval = setInterval(async () => {
+        if (!token) return;
+        try {
+            await loadConversations();
+            // If a conversation is open and WebSocket is disconnected, reload messages
+            if (activeConversationId && (!stompClient || !stompClient.connected)) {
+                await loadMessages(activeConversationId);
+            }
+        } catch (e) { /* silent */ }
+    }, 15000);
 }
 
 // ==================== API HELPERS ====================
@@ -231,6 +249,14 @@ function onMessageReceived(payload) {
 
     // Regular new message
     if (convId === activeConversationId) {
+        // Skip if it's our own message (already shown optimistically)
+        if (msg.sender_id === currentUser.id) {
+            // Remove the temp optimistic message and replace with real one
+            const tempMsgs = document.querySelectorAll('[id^="msg-temp-"]');
+            if (tempMsgs.length > 0) {
+                tempMsgs[0].remove();
+            }
+        }
         appendMessage(msg);
         scrollToBottom();
         // Auto mark as read if window focused and not our own message
@@ -484,8 +510,13 @@ async function loadMessages(convId) {
             container.innerHTML = '';
             messages.forEach(msg => appendMessage(msg));
             scrollToBottom();
+        } else {
+            container.innerHTML = '<div style="text-align:center;padding:20px;color:#999">Failed to load messages</div>';
         }
-    } catch (e) { console.error('Failed to load messages', e); }
+    } catch (e) {
+        console.error('Failed to load messages', e);
+        container.innerHTML = '<div style="text-align:center;padding:20px;color:#999">Connection error. Messages will load on reconnect.</div>';
+    }
 }
 
 // ==================== MESSAGE RENDERING ====================
@@ -594,7 +625,7 @@ function scrollToBottom() {
 function sendMessage() {
     const input = document.getElementById('messageInput');
     const text = input.value.trim();
-    if (!text || !activeConversationId || !stompClient || !stompClient.connected) return;
+    if (!text || !activeConversationId) return;
 
     const dto = {
         conversation_id: activeConversationId,
@@ -606,7 +637,33 @@ function sendMessage() {
         dto.reply_to_id = replyingTo.id;
     }
 
-    stompClient.send('/app/sendmessage', {'content-type': 'application/json'}, JSON.stringify(dto));
+    // Optimistic UI: show message immediately before server confirms
+    const tempId = 'temp-' + Date.now();
+    const optimisticMsg = {
+        id: tempId,
+        message: text,
+        sender_id: currentUser.id,
+        sender_name: currentUser.displayName || currentUser.username,
+        conversation_id: activeConversationId,
+        sent_at: new Date().toISOString(),
+        message_type: 'TEXT',
+        delivery_status: 'SENT',
+        is_read: false,
+        reply_to_id: replyingTo ? replyingTo.id : null,
+        reply_to_sender_name: replyingTo ? replyingTo.senderName : null,
+        reply_to_message: replyingTo ? replyingTo.text : null
+    };
+    appendMessage(optimisticMsg);
+    scrollToBottom();
+
+    // Send via WebSocket if connected, otherwise queue
+    if (stompClient && stompClient.connected) {
+        stompClient.send('/app/sendmessage', {'content-type': 'application/json'}, JSON.stringify(dto));
+    } else {
+        messageQueue.push(dto);
+        showToast('Message queued. Reconnecting...', 'warning');
+    }
+
     input.value = '';
     autoResize(input);
     cancelReply();
