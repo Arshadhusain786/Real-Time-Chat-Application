@@ -16,6 +16,7 @@ RUN mkdir -p /app/uploads
 
 # Render uses PORT env var
 ENV PORT=8081
+ENV TZ=Asia/Kolkata
 EXPOSE ${PORT}
 
-ENTRYPOINT ["java", "-jar", "app.jar", "--server.port=${PORT}"]
+ENTRYPOINT ["java", "-Duser.timezone=Asia/Kolkata", "-jar", "app.jar", "--server.port=${PORT}"]
