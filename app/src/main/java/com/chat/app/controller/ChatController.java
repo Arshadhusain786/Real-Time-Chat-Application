@@ -75,16 +75,37 @@ public class ChatController {
 
             ChatMessageDTO responseDTO = chatMessage.toDTO();
 
-            // Deliver to all conversation members
+            // A1: Per-member try/catch so one failed delivery doesn't block others
             for (ConversationMember member : conversation.getMembers()) {
                 String targetUsername = member.getUser().getUsername();
-                messagingTemplate.convertAndSendToUser(
-                        targetUsername,
-                        "/queue/messages",
-                        responseDTO
-                );
-                log.debug("Message {} delivered to user {} in conversation {}", chatMessage.getId(), targetUsername, convId);
+                try {
+                    messagingTemplate.convertAndSendToUser(
+                            targetUsername,
+                            "/queue/messages",
+                            responseDTO
+                    );
+                } catch (Exception deliveryEx) {
+                    log.warn("Failed to deliver message {} to user {}: {}", chatMessage.getId(), targetUsername, deliveryEx.getMessage());
+                }
             }
+
+            // A1: Push conversation-updated event to all members so their sidebar updates
+            // (unread badge, last message preview, conversation moves to top)
+            ConversationDTO convUpdateDTO = buildConversationUpdateDTO(conversation, chatMessage);
+            for (ConversationMember member : conversation.getMembers()) {
+                try {
+                    messagingTemplate.convertAndSendToUser(
+                            member.getUser().getUsername(),
+                            "/queue/conversations",
+                            convUpdateDTO
+                    );
+                } catch (Exception ex) {
+                    // Non-critical - sidebar update missed, will sync on next load
+                }
+            }
+
+            log.debug("Message {} saved and delivered to {} members in conversation {}",
+                    chatMessage.getId(), conversation.getMembers().size(), convId);
         } catch (Exception e) {
             log.error("Failed to save/deliver message from {} to conversation {}", senderUsername, convId, e);
         }
@@ -321,6 +342,7 @@ public class ChatController {
     public ResponseEntity<?> getOrCreateDirectConversation(@PathVariable Long userId) {
         User currentUser = getAuthenticatedUser();
         try {
+            boolean isNew = !conversationService.hasDirectConversation(currentUser.getId(), userId);
             Conversation conversation = conversationService.getOrCreateDirectConversation(currentUser.getId(), userId);
             ConversationDTO dto = conversation.toDTO(currentUser);
             long unread = chatMessageService.getUnreadCount(conversation.getId(), currentUser.getId());
@@ -337,6 +359,24 @@ public class ChatController {
                             .build())
                     .collect(Collectors.toList());
             dto.setMembers(memberDtos);
+
+            // A2: If this is a brand-new conversation, notify the OTHER user
+            if (isNew) {
+                User otherUser = userService.getUserById(userId);
+                // Build DTO from the other user's perspective
+                ConversationDTO otherDto = conversation.toDTO(otherUser);
+                otherDto.setUnreadCount(0);
+                otherDto.setMembers(memberDtos);
+                try {
+                    messagingTemplate.convertAndSendToUser(
+                            otherUser.getUsername(),
+                            "/queue/conversations",
+                            otherDto
+                    );
+                } catch (Exception ex) {
+                    log.debug("Could not push new DM notification to {}: {}", otherUser.getUsername(), ex.getMessage());
+                }
+            }
 
             return ResponseEntity.ok(dto);
         } catch (IllegalArgumentException e) {
@@ -462,5 +502,35 @@ public class ChatController {
     private User getAuthenticatedUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         return (User) auth.getPrincipal();
+    }
+
+    /**
+     * Build a lightweight conversation update DTO to push to members' sidebar.
+     */
+    private ConversationDTO buildConversationUpdateDTO(Conversation conversation, ChatMessage latestMessage) {
+        ConversationDTO dto = ConversationDTO.builder()
+                .id(conversation.getId())
+                .name(conversation.getName())
+                .avatarUrl(conversation.getAvatarUrl())
+                .type(conversation.getType() != null ? conversation.getType().name() : "DIRECT")
+                .updatedAt(conversation.getUpdatedAt())
+                .lastMessage(latestMessage != null ? latestMessage.toDTO() : null)
+                .memberCount(conversation.getMembers() != null ? conversation.getMembers().size() : 0)
+                .build();
+
+        if (conversation.getMembers() != null) {
+            List<ConversationDTO.MemberDTO> memberDtos = conversation.getMembers().stream()
+                    .map(m -> ConversationDTO.MemberDTO.builder()
+                            .id(m.getUser().getId())
+                            .username(m.getUser().getUsername())
+                            .displayName(m.getUser().getDisplayName())
+                            .profilePicture(m.getUser().getProfilePicture())
+                            .isOnline(presenceService.isUserOnline(m.getUser().getId()))
+                            .role(m.getRole().name())
+                            .build())
+                    .collect(Collectors.toList());
+            dto.setMembers(memberDtos);
+        }
+        return dto;
     }
 }

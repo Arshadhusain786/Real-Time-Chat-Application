@@ -31,7 +31,6 @@ public class Conversation {
 
     @Column(length = 100)
     private String name;
-
     @Column(name = "avatar_url")
     private String avatarUrl;
 

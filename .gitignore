@@ -1,0 +1,32 @@
+# Build output
+target/
+app/target/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+
+# Logs
+*.log
+app/logs/
+
+# Uploads (user media)
+uploads/
+app/uploads/
+
+# Environment / secrets
+.env
+*.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Maven wrapper (optional - can keep these, but they're large)
+# .mvn/wrapper/maven-wrapper.jar

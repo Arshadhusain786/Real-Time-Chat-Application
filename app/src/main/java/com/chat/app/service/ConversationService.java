@@ -109,6 +109,11 @@ public class ConversationService {
         return memberRepo.existsByConversationIdAndUserId(conversationId, userId);
     }
 
+    @Transactional(readOnly = true)
+    public boolean hasDirectConversation(Long user1Id, Long user2Id) {
+        return !conversationRepo.findDirectConversation(user1Id, user2Id).isEmpty();
+    }
+
     @Transactional
     public void addMember(Long conversationId, Long userId, Long requesterId) {
         Conversation conv = getConversationById(conversationId);

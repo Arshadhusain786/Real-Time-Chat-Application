@@ -152,6 +152,7 @@ function showApp() {
     document.getElementById('myAvatar').textContent = initials;
     loadConversations();
     connectWebSocket();
+    requestNotificationPermission();
 }
 
 // ==================== API HELPERS ====================
@@ -172,6 +173,10 @@ function connectWebSocket() {
     stompClient = Stomp.over(socket);
     stompClient.debug = null; // disable verbose STOMP debug logs
 
+    // A1: Enable heartbeat for dead connection detection
+    stompClient.heartbeat.outgoing = 10000; // send heartbeat every 10s
+    stompClient.heartbeat.incoming = 10000; // expect heartbeat every 10s
+
     stompClient.connect({'Authorization': 'Bearer ' + token}, () => {
         console.log('WebSocket connected for user:', currentUser.username);
         // Subscribe to private queues (user-specific, per-session via Spring)
@@ -180,11 +185,29 @@ function connectWebSocket() {
         stompClient.subscribe('/user/queue/read', onReadReceived);
         stompClient.subscribe('/user/queue/conversations', onConversationReceived);
         stompClient.subscribe('/topic/presence', onPresenceReceived);
+
+        // A3: After (re)connect, resync state from server
+        resyncAfterReconnect();
     }, (error) => {
         console.warn('WebSocket disconnected, reconnecting in 3s...');
         stompClient = null;
+        showToast('Connection lost. Reconnecting...', 'warning');
         setTimeout(connectWebSocket, 3000);
     });
+}
+
+// A3: Resync conversations and active chat after reconnect
+async function resyncAfterReconnect() {
+    try {
+        await loadConversations();
+        if (activeConversationId) {
+            await loadMessages(activeConversationId);
+        }
+        // Flush any queued messages
+        flushMessageQueue();
+    } catch (e) {
+        console.error('Resync failed:', e);
+    }
 }
 
 function onMessageReceived(payload) {
@@ -220,6 +243,13 @@ function onMessageReceived(payload) {
         if (conv) {
             conv.unread_count = (conv.unread_count || 0) + 1;
             conv.last_message = msg;
+        }
+        // Browser notification if tab is hidden
+        if (msg.sender_id !== currentUser.id) {
+            showBrowserNotification(
+                msg.sender_name || 'New message',
+                msg.message || '📎 Attachment'
+            );
         }
     }
 
@@ -263,10 +293,23 @@ function onReadReceived(payload) {
 
 function onConversationReceived(payload) {
     const conv = JSON.parse(payload.body);
-    if (!conversations.find(c => c.id === conv.id)) {
+    const existingIdx = conversations.findIndex(c => c.id === conv.id);
+    if (existingIdx >= 0) {
+        // Update existing conversation (new message arrived, sidebar update)
+        const existing = conversations[existingIdx];
+        if (conv.last_message) existing.last_message = conv.last_message;
+        if (conv.updated_at) existing.updated_at = conv.updated_at;
+        if (conv.members) existing.members = conv.members;
+        // Move to top
+        if (existingIdx > 0) {
+            conversations.splice(existingIdx, 1);
+            conversations.unshift(existing);
+        }
+    } else {
+        // Brand new conversation (first DM or new group)
         conversations.unshift(conv);
-        renderConversationList();
     }
+    renderConversationList();
 }
 
 function onPresenceReceived(payload) {
@@ -989,3 +1032,60 @@ document.addEventListener('visibilitychange', () => {
         }
     }
 });
+
+// ==================== TOAST NOTIFICATIONS (A3) ====================
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toastContainer') || createToastContainer();
+    const toast = document.createElement('div');
+    toast.className = `toast-notification toast-${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => { toast.classList.add('show'); }, 10);
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 4000);
+}
+
+function createToastContainer() {
+    const c = document.createElement('div');
+    c.id = 'toastContainer';
+    c.style.cssText = 'position:fixed;top:20px;right:20px;z-index:10000;display:flex;flex-direction:column;gap:8px;';
+    document.body.appendChild(c);
+    return c;
+}
+
+// ==================== MESSAGE QUEUE (A3 retry) ====================
+let messageQueue = [];
+
+function flushMessageQueue() {
+    if (!stompClient || !stompClient.connected || messageQueue.length === 0) return;
+    const queued = [...messageQueue];
+    messageQueue = [];
+    queued.forEach(dto => {
+        try {
+            stompClient.send('/app/sendmessage', {'content-type': 'application/json'}, JSON.stringify(dto));
+        } catch (e) {
+            messageQueue.push(dto); // re-queue if still failing
+        }
+    });
+    if (messageQueue.length > 0) {
+        showToast(`${messageQueue.length} message(s) still pending...`, 'warning');
+    }
+}
+
+// ==================== BROWSER NOTIFICATIONS ====================
+function requestNotificationPermission() {
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+}
+
+function showBrowserNotification(title, body) {
+    if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+        new Notification(title, { body, icon: '/static/images/chat-icon.png' });
+    }
+}
+
+// Request notification permission after login
+if (currentUser) requestNotificationPermission();
