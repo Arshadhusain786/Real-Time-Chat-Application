@@ -1023,6 +1023,73 @@ function showGroupInfo() {
     alert(`Group: ${conv.name}\n${conv.description ? 'Description: ' + conv.description + '\n' : ''}\nMembers (${members.length}):\n${memberList}`);
 }
 
+// ==================== DELETE / BLOCK ACTIONS ====================
+async function deleteConversation() {
+    if (!activeConversationId) return;
+    if (!confirm('Delete this entire conversation? All messages will be permanently removed.')) return;
+    try {
+        const resp = await apiDelete(`/api/conversations/${activeConversationId}`);
+        if (resp.ok) {
+            conversations = conversations.filter(c => c.id != activeConversationId);
+            activeConversationId = null;
+            document.getElementById('activeChatView').style.display = 'none';
+            document.getElementById('emptyState').style.display = '';
+            renderConversationList();
+            showToast('Conversation deleted', 'success');
+        } else {
+            const err = await resp.json();
+            showToast(err.error || 'Failed to delete', 'error');
+        }
+    } catch (e) { showToast('Error deleting conversation', 'error'); }
+}
+
+async function clearChat() {
+    if (!activeConversationId) return;
+    if (!confirm('Clear all messages in this chat? This cannot be undone.')) return;
+    try {
+        const resp = await apiDelete(`/api/conversations/${activeConversationId}/messages`);
+        if (resp.ok) {
+            document.getElementById('chatMessages').innerHTML = '<div style="text-align:center;padding:20px;color:#999">No messages yet</div>';
+            showToast('Chat cleared', 'success');
+        } else {
+            showToast('Failed to clear chat', 'error');
+        }
+    } catch (e) { showToast('Error clearing chat', 'error'); }
+}
+
+async function blockUserFromChat() {
+    const conv = conversations.find(c => c.id == activeConversationId);
+    if (!conv || conv.type !== 'DIRECT' || !conv.members) return;
+    const other = conv.members.find(m => m.id !== currentUser.id);
+    if (!other) return;
+    if (!confirm(`Block ${other.displayName || other.username}? They won't be able to message you.`)) return;
+    try {
+        const resp = await apiPost(`/api/users/${other.id}/block`);
+        if (resp.ok) {
+            showToast(`${other.displayName || other.username} blocked`, 'success');
+        } else {
+            const err = await resp.json();
+            showToast(err.error || 'Failed to block', 'error');
+        }
+    } catch (e) { showToast('Error blocking user', 'error'); }
+}
+
+async function unblockUserFromChat() {
+    const conv = conversations.find(c => c.id == activeConversationId);
+    if (!conv || conv.type !== 'DIRECT' || !conv.members) return;
+    const other = conv.members.find(m => m.id !== currentUser.id);
+    if (!other) return;
+    try {
+        const resp = await apiDelete(`/api/users/${other.id}/block`);
+        if (resp.ok) {
+            showToast(`${other.displayName || other.username} unblocked`, 'success');
+        } else {
+            const err = await resp.json();
+            showToast(err.error || 'Failed to unblock', 'error');
+        }
+    } catch (e) { showToast('Error unblocking user', 'error'); }
+}
+
 // ==================== UTILITIES ====================
 function backToList() {
     document.querySelector('.app-container').classList.remove('chat-open');

@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 
 @Service
 @Slf4j
@@ -16,6 +17,7 @@ public class ConversationService {
 
     private final ConversationRepository conversationRepo;
     private final ConversationMemberRepository memberRepo;
+    private final BlockedUserRepository blockedUserRepo;
     private final UserService userService;
 
     @Transactional
@@ -185,5 +187,54 @@ public class ConversationService {
         ConversationMember target = verifyMembership(conversationId, userId);
         target.setRole(ConversationMember.Role.ADMIN);
         memberRepo.save(target);
+    }
+
+    // ==================== DELETE CONVERSATION ====================
+
+    @Transactional
+    public void deleteConversation(Long conversationId, Long userId) {
+        Conversation conv = getConversationById(conversationId);
+        verifyMembership(conversationId, userId);
+        conversationRepo.delete(conv);
+        log.info("Conversation {} deleted by user {}", conversationId, userId);
+    }
+
+    // ==================== BLOCK / UNBLOCK ====================
+
+    @Transactional
+    public void blockUser(Long blockerId, Long blockedId) {
+        if (blockerId.equals(blockedId)) {
+            throw new IllegalArgumentException("Cannot block yourself");
+        }
+        if (blockedUserRepo.existsByBlockerIdAndBlockedId(blockerId, blockedId)) {
+            throw new IllegalArgumentException("User is already blocked");
+        }
+        User blocker = userService.getUserById(blockerId);
+        User blocked = userService.getUserById(blockedId);
+        blockedUserRepo.save(BlockedUser.builder().blocker(blocker).blocked(blocked).build());
+        log.info("User {} blocked user {}", blockerId, blockedId);
+    }
+
+    @Transactional
+    public void unblockUser(Long blockerId, Long blockedId) {
+        blockedUserRepo.deleteByBlockerIdAndBlockedId(blockerId, blockedId);
+        log.info("User {} unblocked user {}", blockerId, blockedId);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isBlocked(Long blockerId, Long blockedId) {
+        return blockedUserRepo.existsByBlockerIdAndBlockedId(blockerId, blockedId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getBlockedUsers(Long userId) {
+        return blockedUserRepo.findAllByBlockerId(userId).stream().map(b -> {
+            Map<String, Object> map = new java.util.HashMap<>();
+            map.put("id", b.getBlocked().getId());
+            map.put("username", b.getBlocked().getUsername());
+            map.put("displayName", b.getBlocked().getDisplayName());
+            map.put("blockedAt", b.getBlockedAt());
+            return map;
+        }).toList();
     }
 }

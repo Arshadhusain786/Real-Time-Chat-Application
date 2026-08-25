@@ -59,7 +59,18 @@ public class ChatController {
             return;
         }
 
+        // Check if blocked (for DIRECT conversations)
         Conversation conversation = conversationService.getConversationById(convId);
+        if (conversation.getType() == Conversation.ConversationType.DIRECT) {
+            for (ConversationMember member : conversation.getMembers()) {
+                if (!member.getUser().getId().equals(sender.getId())) {
+                    if (conversationService.isBlocked(member.getUser().getId(), sender.getId())) {
+                        log.warn("Message from {} blocked by user {}", senderUsername, member.getUser().getUsername());
+                        return;
+                    }
+                }
+            }
+        }
 
         try {
             ChatMessage chatMessage = chatMessageService.saveMessage(
@@ -503,6 +514,70 @@ public class ChatController {
     @GetMapping("/chat")
     public String chat() {
         return "chat";
+    }
+
+    // ==================== DELETE / BLOCK ENDPOINTS ====================
+
+    @DeleteMapping("/api/conversations/{conversationId}")
+    @ResponseBody
+    public ResponseEntity<?> deleteConversation(@PathVariable Long conversationId) {
+        User currentUser = getAuthenticatedUser();
+        if (!conversationService.isMember(conversationId, currentUser.getId())) {
+            return ResponseEntity.status(403).body(Map.of("error", "Access denied"));
+        }
+        conversationService.deleteConversation(conversationId, currentUser.getId());
+        return ResponseEntity.ok(Map.of("message", "Conversation deleted"));
+    }
+
+    @DeleteMapping("/api/conversations/{conversationId}/messages")
+    @ResponseBody
+    public ResponseEntity<?> clearChat(@PathVariable Long conversationId) {
+        User currentUser = getAuthenticatedUser();
+        if (!conversationService.isMember(conversationId, currentUser.getId())) {
+            return ResponseEntity.status(403).body(Map.of("error", "Access denied"));
+        }
+        chatMessageService.clearConversation(conversationId);
+        return ResponseEntity.ok(Map.of("message", "Chat cleared"));
+    }
+
+    @PostMapping("/api/users/{userId}/block")
+    @ResponseBody
+    public ResponseEntity<?> blockUser(@PathVariable Long userId) {
+        User currentUser = getAuthenticatedUser();
+        try {
+            conversationService.blockUser(currentUser.getId(), userId);
+            return ResponseEntity.ok(Map.of("message", "User blocked"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/api/users/{userId}/block")
+    @ResponseBody
+    public ResponseEntity<?> unblockUser(@PathVariable Long userId) {
+        User currentUser = getAuthenticatedUser();
+        try {
+            conversationService.unblockUser(currentUser.getId(), userId);
+            return ResponseEntity.ok(Map.of("message", "User unblocked"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/api/users/blocked")
+    @ResponseBody
+    public ResponseEntity<?> getBlockedUsers() {
+        User currentUser = getAuthenticatedUser();
+        var blocked = conversationService.getBlockedUsers(currentUser.getId());
+        return ResponseEntity.ok(blocked);
+    }
+
+    @GetMapping("/api/users/{userId}/blocked")
+    @ResponseBody
+    public ResponseEntity<?> isBlocked(@PathVariable Long userId) {
+        User currentUser = getAuthenticatedUser();
+        boolean blocked = conversationService.isBlocked(currentUser.getId(), userId);
+        return ResponseEntity.ok(Map.of("blocked", blocked));
     }
 
     private User getAuthenticatedUser() {

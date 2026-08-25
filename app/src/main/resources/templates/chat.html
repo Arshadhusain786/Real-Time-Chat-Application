@@ -234,6 +234,16 @@
                         <div class="status" id="chatStatus"></div>
                     </div>
                     <button class="btn btn-sm btn-outline-secondary" id="groupInfoBtn" style="display:none" onclick="showGroupInfo()"><i class="bi bi-info-circle"></i></button>
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown"><i class="bi bi-three-dots-vertical"></i></button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="#" onclick="clearChat()"><i class="bi bi-eraser me-2"></i>Clear chat</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="deleteConversation()"><i class="bi bi-trash me-2"></i>Delete conversation</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item text-danger" href="#" onclick="blockUserFromChat()"><i class="bi bi-slash-circle me-2"></i>Block user</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="unblockUserFromChat()"><i class="bi bi-check-circle me-2"></i>Unblock user</a></li>
+                        </ul>
+                    </div>
                 </div>
                 <div class="chat-messages" id="chatMessages"></div>
                 <div class="typing-indicator" id="typingIndicator"></div>

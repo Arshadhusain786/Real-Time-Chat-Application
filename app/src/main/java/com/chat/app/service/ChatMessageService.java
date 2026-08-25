@@ -146,6 +146,12 @@ public class ChatMessageService {
         return messageRepository.findLatestMessage(conversationId);
     }
 
+    @Transactional
+    public void clearConversation(Long conversationId) {
+        messageRepository.deleteByConversationId(conversationId);
+        log.info("All messages cleared from conversation {}", conversationId);
+    }
+
     private String sanitizeInput(String input) {
         if (input == null) return "";
         // Replace dangerous HTML characters
