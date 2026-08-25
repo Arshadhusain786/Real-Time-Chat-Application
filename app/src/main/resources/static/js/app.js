@@ -248,7 +248,7 @@ function onMessageReceived(payload) {
     }
 
     // Regular new message
-    if (convId === activeConversationId) {
+    if (convId == activeConversationId) {
         // Skip if it's our own message (already shown optimistically)
         if (msg.sender_id === currentUser.id) {
             // Remove the temp optimistic message and replace with real one
@@ -265,7 +265,7 @@ function onMessageReceived(payload) {
         }
     } else {
         // Not viewing this conversation - increase unread
-        const conv = conversations.find(c => c.id === convId);
+        const conv = conversations.find(c => c.id == convId);
         if (conv) {
             conv.unread_count = (conv.unread_count || 0) + 1;
             conv.last_message = msg;
@@ -389,7 +389,7 @@ function renderConversationList() {
     }
 
     list.innerHTML = filtered.map(conv => {
-        const isActive = conv.id === activeConversationId;
+        const isActive = conv.id == activeConversationId;
         const lastMsg = conv.last_message;
         const unread = conv.unread_count || 0;
         const initials = (conv.name || '?').charAt(0).toUpperCase();
@@ -427,7 +427,7 @@ function renderConversationList() {
 function filterConversations() { renderConversationList(); }
 
 function moveConversationToTop(convId, lastMsg) {
-    const idx = conversations.findIndex(c => c.id === convId);
+    const idx = conversations.findIndex(c => c.id == convId);
     if (idx > 0) {
         const [conv] = conversations.splice(idx, 1);
         conv.last_message = lastMsg;
@@ -438,7 +438,7 @@ function moveConversationToTop(convId, lastMsg) {
 }
 
 function updateConversationUnread(convId, count) {
-    const conv = conversations.find(c => c.id === convId);
+    const conv = conversations.find(c => c.id == convId);
     if (conv) {
         conv.unread_count = count;
         renderConversationList();
@@ -447,8 +447,8 @@ function updateConversationUnread(convId, count) {
 
 // ==================== OPEN CONVERSATION ====================
 async function openConversation(convId) {
-    activeConversationId = convId;
-    const conv = conversations.find(c => c.id === convId);
+    activeConversationId = Number(convId);
+    const conv = conversations.find(c => c.id == convId);
     if (!conv) return;
 
     // Show chat view
@@ -483,7 +483,7 @@ async function openConversation(convId) {
 }
 
 function updateChatHeaderStatus() {
-    const conv = conversations.find(c => c.id === activeConversationId);
+    const conv = conversations.find(c => c.id == activeConversationId);
     if (!conv) return;
     const statusEl = document.getElementById('chatStatus');
     if (conv.type === 'DIRECT' && conv.members) {
@@ -539,7 +539,7 @@ function appendMessage(msg) {
     }
 
     // Sender name (in groups, for incoming)
-    const conv = conversations.find(c => c.id === activeConversationId);
+    const conv = conversations.find(c => c.id == activeConversationId);
     if (conv && conv.type === 'GROUP' && !isOwn) {
         content += `<div class="message-sender">${escapeHtml(msg.sender_name || '')}</div>`;
     }
@@ -926,7 +926,7 @@ async function startDirectChat(userId) {
         if (resp.ok) {
             const conv = await resp.json();
             // Add to list if not already present
-            const existing = conversations.find(c => c.id === conv.id);
+            const existing = conversations.find(c => c.id == conv.id);
             if (!existing) {
                 conversations.unshift(conv);
             }
@@ -1013,7 +1013,7 @@ async function createGroup() {
 }
 
 function showGroupInfo() {
-    const conv = conversations.find(c => c.id === activeConversationId);
+    const conv = conversations.find(c => c.id == activeConversationId);
     if (!conv || conv.type !== 'GROUP') return;
     const members = conv.members || [];
     const memberList = members.map(m => {
@@ -1081,7 +1081,7 @@ function closeLightbox() { document.getElementById('lightbox').classList.remove(
 // Auto-read when tab becomes visible
 document.addEventListener('visibilitychange', () => {
     if (!document.hidden && activeConversationId) {
-        const conv = conversations.find(c => c.id === activeConversationId);
+        const conv = conversations.find(c => c.id == activeConversationId);
         if (conv && conv.unread_count > 0) {
             markAsRead(activeConversationId);
             conv.unread_count = 0;

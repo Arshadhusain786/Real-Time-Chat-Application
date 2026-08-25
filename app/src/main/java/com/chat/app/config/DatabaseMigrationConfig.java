@@ -32,6 +32,10 @@ public class DatabaseMigrationConfig {
             // Make conversations.name nullable (DIRECT chats have no name)
             safeExecute(jdbc, "ALTER TABLE conversations ALTER COLUMN name DROP NOT NULL",
                     "conversations.name set to nullable");
+
+            // Fix legacy conversations with NULL type — set them to DIRECT
+            safeExecute(jdbc, "UPDATE conversations SET type = 'DIRECT' WHERE type IS NULL",
+                    "set type=DIRECT for legacy conversations");
         };
     }
 
