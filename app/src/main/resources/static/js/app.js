@@ -403,7 +403,10 @@ function renderConversationList() {
         const isOnline = otherMember && otherMember.is_online;
         const timeStr = lastMsg && lastMsg.sent_at ? formatTime(lastMsg.sent_at) : '';
         let lastMsgText = '';
-        if (lastMsg) {
+        // Show draft indicator if there's a saved draft
+        if (chatDrafts[conv.id]) {
+            lastMsgText = 'Draft: ' + chatDrafts[conv.id].substring(0, 30);
+        } else if (lastMsg) {
             const prefix = lastMsg.sender_id === currentUser.id ? 'You: ' : '';
             if (lastMsg.message_type && lastMsg.message_type !== 'TEXT') {
                 lastMsgText = prefix + '📎 ' + lastMsg.message_type.toLowerCase();
@@ -457,7 +460,19 @@ function updateConversationUnread(convId, count) {
 }
 
 // ==================== OPEN CONVERSATION ====================
+let chatDrafts = {}; // per-conversation draft storage
+
 async function openConversation(convId) {
+    // Save current draft before switching
+    if (activeConversationId) {
+        const input = document.getElementById('messageInput');
+        if (input && input.value.trim()) {
+            chatDrafts[activeConversationId] = input.value;
+        } else {
+            delete chatDrafts[activeConversationId];
+        }
+    }
+
     activeConversationId = Number(convId);
     const conv = conversations.find(c => c.id == convId);
     if (!conv) return;
@@ -494,7 +509,11 @@ async function openConversation(convId) {
     }
 
     renderConversationList();
-    document.getElementById('messageInput').focus();
+    // Restore draft for this conversation
+    const input = document.getElementById('messageInput');
+    input.value = chatDrafts[convId] || '';
+    autoResize(input);
+    input.focus();
 }
 
 function updateChatHeaderStatus() {
@@ -523,7 +542,18 @@ async function loadMessages(convId) {
         if (resp.ok) {
             const messages = await resp.json();
             container.innerHTML = '';
-            messages.forEach(msg => appendMessage(msg));
+            let lastDate = null;
+            messages.forEach(msg => {
+                // Date separator
+                if (msg.sent_at) {
+                    const msgDate = new Date(msg.sent_at).toDateString();
+                    if (msgDate !== lastDate) {
+                        lastDate = msgDate;
+                        container.innerHTML += `<div class="date-separator">${formatDateSeparator(msg.sent_at)}</div>`;
+                    }
+                }
+                appendMessage(msg);
+            });
             scrollToBottom();
         } else {
             container.innerHTML = '<div style="text-align:center;padding:20px;color:#999">Failed to load messages</div>';
@@ -584,7 +614,7 @@ function appendMessage(msg) {
 
         // Text (don't show filename as text for non-text types)
         if (msg.message && (msg.message_type === 'TEXT' || !msg.message_type)) {
-            content += `<div class="message-text">${escapeHtml(msg.message)}</div>`;
+            content += `<div class="message-text">${formatMessageText(msg.message)}</div>`;
         }
     }
 
@@ -1289,6 +1319,26 @@ function escapeHtml(str) {
     return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ==================== MESSAGE FORMATTING ====================
+function formatMessageText(text) {
+    if (!text) return '';
+    let s = escapeHtml(text);
+    // Code blocks: ```code```
+    s = s.replace(/```([\s\S]*?)```/g, '<code class="code-block">$1</code>');
+    // Inline code: `code`
+    s = s.replace(/`([^`]+)`/g, '<code class="code-inline">$1</code>');
+    // Bold: *text* or **text**
+    s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/\*(.+?)\*/g, '<strong>$1</strong>');
+    // Italic: _text_
+    s = s.replace(/\_(.+?)\_/g, '<em>$1</em>');
+    // Strikethrough: ~text~
+    s = s.replace(/\~(.+?)\~/g, '<del>$1</del>');
+    // URLs: auto-link
+    s = s.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:var(--primary)">$1</a>');
+    return s;
+}
+
 function escapeAttr(str) {
     if (!str) return '';
     return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
@@ -1313,6 +1363,16 @@ function formatMessageTime(dateStr) {
     const d = new Date(dateStr);
     if (isNaN(d.getTime())) return '';
     return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+}
+
+function formatDateSeparator(dateStr) {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    if (isToday) return 'Today';
+    const yesterday = new Date(now); yesterday.setDate(yesterday.getDate()-1);
+    if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+    return d.toLocaleDateString([], {weekday:'long', month:'short', day:'numeric', year:'numeric'});
 }
 
 function formatFileSize(bytes) {
@@ -1498,3 +1558,48 @@ function toggleDarkMode() {
     const saved = localStorage.getItem('chat_theme');
     if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
 })();
+
+
+// ==================== EMOJI PICKER (COMPOSER) ====================
+const EMOJI_LIST = ['😀','😂','😊','😍','🥰','😎','🤔','😢','😡','🥳','👍','👎','❤️','🔥','💯','🎉','👏','🙌','💪','🤝','👋','✨','⭐','🌟','💫','🎈','🎁','🎊','✅','❌','⚡','💡','🔔','📌','🗑️','✏️','📎','🔗','💬','👀','🙏','💀','🫡','🤷','🤦','😴','🤮','🥺','😏','🫠'];
+
+function toggleEmojiPicker(event) {
+    event.stopPropagation();
+    const picker = document.getElementById('emojiPicker');
+    if (picker.style.display === 'block') {
+        picker.style.display = 'none';
+        return;
+    }
+    picker.style.display = 'block';
+    picker.style.left = '';
+    picker.style.right = '20px';
+    picker.style.bottom = '80px';
+    picker.style.top = '';
+    picker.innerHTML = EMOJI_LIST.map(e =>
+        `<span style="cursor:pointer;font-size:22px;padding:4px;display:inline-block" onclick="insertEmoji('${e}')">${e}</span>`
+    ).join('');
+    setTimeout(() => document.addEventListener('click', function handler() {
+        picker.style.display = 'none';
+        document.removeEventListener('click', handler);
+    }), 10);
+}
+
+function insertEmoji(emoji) {
+    const input = document.getElementById('messageInput');
+    const start = input.selectionStart || input.value.length;
+    input.value = input.value.substring(0, start) + emoji + input.value.substring(input.selectionEnd || start);
+    input.focus();
+    input.selectionStart = input.selectionEnd = start + emoji.length;
+    document.getElementById('emojiPicker').style.display = 'none';
+}
+
+// ==================== MARK AS UNREAD ====================
+function markAsUnread() {
+    if (!activeConversationId) return;
+    const conv = conversations.find(c => c.id == activeConversationId);
+    if (conv) {
+        conv.unread_count = Math.max(conv.unread_count || 0, 1);
+        renderConversationList();
+        showToast('Marked as unread', 'success');
+    }
+}
