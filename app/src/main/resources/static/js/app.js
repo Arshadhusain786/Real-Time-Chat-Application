@@ -889,7 +889,14 @@ function updateRecordingTime() {
 function showNewChatModal() {
     document.getElementById('newChatSearch').value = '';
     document.getElementById('newChatUserList').innerHTML = '<div style="padding:16px;text-align:center;color:#999">Type a username to search</div>';
-    new bootstrap.Modal(document.getElementById('newChatModal')).show();
+    const modalEl = document.getElementById('newChatModal');
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+    // Focus input after modal animation completes (fixes mobile keyboard)
+    modalEl.addEventListener('shown.bs.modal', function handler() {
+        document.getElementById('newChatSearch').focus();
+        modalEl.removeEventListener('shown.bs.modal', handler);
+    });
 }
 
 async function searchUsersForChat() {
@@ -932,7 +939,9 @@ function renderUserList(container, users, onClickFn) {
 }
 
 async function startDirectChat(userId) {
-    bootstrap.Modal.getInstance(document.getElementById('newChatModal')).hide();
+    const modalEl = document.getElementById('newChatModal');
+    const modal = bootstrap.Modal.getInstance(modalEl);
+    if (modal) modal.hide();
     try {
         const resp = await apiPost(`/api/conversations/direct/${userId}`);
         if (resp.ok) {
@@ -944,8 +953,14 @@ async function startDirectChat(userId) {
             }
             renderConversationList();
             openConversation(conv.id);
+        } else {
+            const err = await resp.json();
+            showToast(err.error || 'Failed to start chat', 'error');
         }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+        console.error(e);
+        showToast('Failed to start chat', 'error');
+    }
 }
 
 // ==================== GROUP CHAT ====================
@@ -956,7 +971,13 @@ function showNewGroupModal() {
     document.getElementById('groupMemberSearch').value = '';
     document.getElementById('selectedMembers').innerHTML = '';
     document.getElementById('groupUserList').innerHTML = '<div style="padding:16px;text-align:center;color:#999">Search users to add</div>';
-    new bootstrap.Modal(document.getElementById('newGroupModal')).show();
+    const modalEl = document.getElementById('newGroupModal');
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+    modalEl.addEventListener('shown.bs.modal', function handler() {
+        document.getElementById('groupNameInput').focus();
+        modalEl.removeEventListener('shown.bs.modal', handler);
+    });
 }
 
 async function searchUsersForGroup() {
@@ -1015,7 +1036,8 @@ async function createGroup() {
             const conv = await resp.json();
             conversations.unshift(conv);
             renderConversationList();
-            bootstrap.Modal.getInstance(document.getElementById('newGroupModal')).hide();
+            const groupModal = bootstrap.Modal.getInstance(document.getElementById('newGroupModal'));
+            if (groupModal) groupModal.hide();
             openConversation(conv.id);
         } else {
             const err = await resp.json();
