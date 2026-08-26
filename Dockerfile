@@ -1,8 +1,8 @@
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /app
 COPY app/pom.xml .
+COPY app/lombok.config .
 COPY app/src ./src
-COPY app/lombok.config ./lombok.config
 RUN mvn clean package -DskipTests -Dmaven.test.skip=true
 
 FROM eclipse-temurin:21-jre
