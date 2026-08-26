@@ -406,10 +406,13 @@ function renderConversationList() {
             }
         }
         const avatarUserId = otherMember ? otherMember.id : '';
+        const avatarImg = otherMember && otherMember.profile_picture
+            ? otherMember.profile_picture
+            : (conv.avatar_url || null);
 
         return `<div class="conv-item ${isActive?'active':''}" onclick="openConversation(${conv.id})">
             <div class="conv-avatar" data-user-id="${avatarUserId}">
-                ${conv.avatar_url ? `<img src="${escapeAttr(conv.avatar_url)}" alt="">` : initials}
+                ${avatarImg ? `<img src="${escapeAttr(avatarImg)}" alt="">` : initials}
                 ${isOnline ? '<div class="online-dot"></div>' : ''}
             </div>
             <div class="conv-info">
@@ -460,8 +463,12 @@ async function openConversation(convId) {
 
     // Update header
     const initials = (conv.name || '?').charAt(0).toUpperCase();
-    document.getElementById('chatAvatar').innerHTML = conv.avatar_url
-        ? `<img src="${escapeAttr(conv.avatar_url)}" alt="">`
+    const otherMemberChat = conv.type === 'DIRECT' && conv.members ? conv.members.find(m => m.id !== currentUser.id) : null;
+    const headerAvatar = (otherMemberChat && otherMemberChat.profile_picture)
+        ? otherMemberChat.profile_picture
+        : (conv.avatar_url || null);
+    document.getElementById('chatAvatar').innerHTML = headerAvatar
+        ? `<img src="${escapeAttr(headerAvatar)}" alt="">`
         : initials;
     document.getElementById('chatName').textContent = conv.name || 'Chat';
     document.getElementById('groupInfoBtn').style.display = conv.type === 'GROUP' ? '' : 'none';
@@ -909,16 +916,19 @@ function renderUserList(container, users, onClickFn) {
         container.innerHTML = '<div style="padding:16px;text-align:center;color:#999">No users found</div>';
         return;
     }
-    container.innerHTML = users.map(u => `
-        <div class="modal-user-item" onclick="${onClickFn}(${u.id})">
-            <div class="conv-avatar" style="width:36px;height:36px;font-size:14px;margin-right:10px">${(u.displayName||u.username).charAt(0).toUpperCase()}</div>
+    container.innerHTML = users.map(u => {
+        const avatarContent = u.profilePicture
+            ? `<img src="${escapeAttr(u.profilePicture)}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`
+            : (u.displayName||u.username).charAt(0).toUpperCase();
+        return `<div class="modal-user-item" onclick="${onClickFn}(${u.id})">
+            <div class="conv-avatar" style="width:36px;height:36px;font-size:14px;margin-right:10px">${avatarContent}</div>
             <div>
                 <div style="font-weight:600">${escapeHtml(u.displayName || u.username)}</div>
                 <div style="font-size:12px;color:#999">@${escapeHtml(u.username)}</div>
             </div>
             ${u.isOnline ? '<div class="ms-auto"><span style="color:#28a745;font-size:10px">● online</span></div>' : ''}
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
 }
 
 async function startDirectChat(userId) {
