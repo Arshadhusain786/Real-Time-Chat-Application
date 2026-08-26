@@ -31,7 +31,7 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
     @Query("SELECT COUNT(m) FROM ChatMessage m WHERE m.conversation.id = :conversationId AND m.isRead = false AND m.sender.id != :userId")
     long countUnreadForUser(@Param("conversationId") Long conversationId, @Param("userId") Long userId);
 
-    @Query("SELECT m FROM ChatMessage m WHERE m.conversation.id = :conversationId ORDER BY m.sentAt DESC LIMIT 1")
+    @Query(value = "SELECT * FROM messages WHERE conversation_id = :conversationId ORDER BY sent_at DESC LIMIT 1", nativeQuery = true)
     ChatMessage findLatestMessage(@Param("conversationId") Long conversationId);
 
     @Modifying
