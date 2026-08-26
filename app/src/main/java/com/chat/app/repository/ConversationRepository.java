@@ -16,4 +16,7 @@ public interface ConversationRepository extends JpaRepository<Conversation, Long
     @Query("SELECT c FROM Conversation c JOIN c.members m1 JOIN c.members m2 " +
            "WHERE c.type = 'DIRECT' AND m1.user.id = :user1Id AND m2.user.id = :user2Id")
     List<Conversation> findDirectConversation(@Param("user1Id") Long user1Id, @Param("user2Id") Long user2Id);
+
+    @Query("SELECT c FROM Conversation c WHERE c.disappearAfterMinutes IS NOT NULL AND c.disappearAfterMinutes > 0")
+    List<Conversation> findConversationsWithDisappearing();
 }

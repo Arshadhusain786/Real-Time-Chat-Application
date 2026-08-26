@@ -215,6 +215,20 @@ public class ConversationService {
         memberRepo.save(cm);
     }
 
+    @Transactional
+    public void setArchived(Long conversationId, Long userId, boolean archived) {
+        ConversationMember cm = verifyMembership(conversationId, userId);
+        cm.setIsArchived(archived);
+        memberRepo.save(cm);
+    }
+
+    @Transactional
+    public void setDisappearingTimer(Long conversationId, Integer minutes) {
+        Conversation conv = getConversationById(conversationId);
+        conv.setDisappearAfterMinutes(minutes);
+        conversationRepo.save(conv);
+    }
+
     @Transactional(readOnly = true)
     public boolean isPinned(Long conversationId, Long userId) {
         return memberRepo.findByConversationIdAndUserId(conversationId, userId)

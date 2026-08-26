@@ -48,6 +48,9 @@ public class Conversation {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @Column(name = "disappear_after_minutes")
+    private Integer disappearAfterMinutes;
+
     @OneToMany(mappedBy = "conversation", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private List<ChatMessage> messages = new ArrayList<>();

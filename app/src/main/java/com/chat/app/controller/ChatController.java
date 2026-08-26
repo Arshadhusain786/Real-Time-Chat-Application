@@ -336,7 +336,7 @@ public class ChatController {
                             .username(m.getUser().getUsername())
                             .displayName(m.getUser().getDisplayName())
                             .profilePicture(m.getUser().getProfilePicture())
-                            .isOnline(presenceService.isUserOnline(m.getUser().getId()))
+                            .isOnline(presenceService.isUserOnline(m.getUser().getId())).lastSeen(m.getUser().getLastSeen() != null ? m.getUser().getLastSeen().toString() : null)
                             .role(m.getRole().name())
                             .build())
                     .collect(Collectors.toList());
@@ -369,7 +369,7 @@ public class ChatController {
                             .username(m.getUser().getUsername())
                             .displayName(m.getUser().getDisplayName())
                             .profilePicture(m.getUser().getProfilePicture())
-                            .isOnline(presenceService.isUserOnline(m.getUser().getId()))
+                            .isOnline(presenceService.isUserOnline(m.getUser().getId())).lastSeen(m.getUser().getLastSeen() != null ? m.getUser().getLastSeen().toString() : null)
                             .role(m.getRole().name())
                             .build())
                     .collect(Collectors.toList());
@@ -429,7 +429,7 @@ public class ChatController {
                             .username(m.getUser().getUsername())
                             .displayName(m.getUser().getDisplayName())
                             .profilePicture(m.getUser().getProfilePicture())
-                            .isOnline(presenceService.isUserOnline(m.getUser().getId()))
+                            .isOnline(presenceService.isUserOnline(m.getUser().getId())).lastSeen(m.getUser().getLastSeen() != null ? m.getUser().getLastSeen().toString() : null)
                             .role(m.getRole().name())
                             .build())
                     .collect(Collectors.toList());
@@ -598,6 +598,34 @@ public class ChatController {
         return ResponseEntity.ok(Map.of("message", "Conversation unmuted"));
     }
 
+    @PostMapping("/api/conversations/{conversationId}/archive")
+    @ResponseBody
+    public ResponseEntity<?> archiveConversation(@PathVariable Long conversationId) {
+        User currentUser = getAuthenticatedUser();
+        conversationService.setArchived(conversationId, currentUser.getId(), true);
+        return ResponseEntity.ok(Map.of("message", "Conversation archived"));
+    }
+
+    @DeleteMapping("/api/conversations/{conversationId}/archive")
+    @ResponseBody
+    public ResponseEntity<?> unarchiveConversation(@PathVariable Long conversationId) {
+        User currentUser = getAuthenticatedUser();
+        conversationService.setArchived(conversationId, currentUser.getId(), false);
+        return ResponseEntity.ok(Map.of("message", "Conversation unarchived"));
+    }
+
+    @PostMapping("/api/conversations/{conversationId}/disappearing")
+    @ResponseBody
+    public ResponseEntity<?> setDisappearing(@PathVariable Long conversationId, @RequestBody Map<String, Object> request) {
+        User currentUser = getAuthenticatedUser();
+        if (!conversationService.isMember(conversationId, currentUser.getId())) {
+            return ResponseEntity.status(403).body(Map.of("error", "Access denied"));
+        }
+        Integer minutes = request.get("minutes") != null ? ((Number) request.get("minutes")).intValue() : null;
+        conversationService.setDisappearingTimer(conversationId, minutes);
+        return ResponseEntity.ok(Map.of("message", minutes != null ? "Disappearing messages: " + minutes + " min" : "Disappearing messages off"));
+    }
+
     // ==================== DELETE / BLOCK ENDPOINTS ====================
 
     @DeleteMapping("/api/conversations/{conversationId}")
@@ -688,7 +716,7 @@ public class ChatController {
                             .username(m.getUser().getUsername())
                             .displayName(m.getUser().getDisplayName())
                             .profilePicture(m.getUser().getProfilePicture())
-                            .isOnline(presenceService.isUserOnline(m.getUser().getId()))
+                            .isOnline(presenceService.isUserOnline(m.getUser().getId())).lastSeen(m.getUser().getLastSeen() != null ? m.getUser().getLastSeen().toString() : null)
                             .role(m.getRole().name())
                             .build())
                     .collect(Collectors.toList());

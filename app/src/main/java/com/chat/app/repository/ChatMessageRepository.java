@@ -53,4 +53,9 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
            "WHERE cm.user.id = :userId AND LOWER(m.message) LIKE LOWER(CONCAT('%', :query, '%')) " +
            "ORDER BY m.sentAt DESC")
     List<ChatMessage> searchAllUserMessages(@Param("userId") Long userId, @Param("query") String query, Pageable pageable);
+
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM ChatMessage m WHERE m.conversation.id = :conversationId AND m.sentAt < :cutoff")
+    int deleteExpiredMessages(@Param("conversationId") Long conversationId, @Param("cutoff") LocalDateTime cutoff);
 }

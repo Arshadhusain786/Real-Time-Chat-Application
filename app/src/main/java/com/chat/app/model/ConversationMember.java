@@ -56,6 +56,10 @@ public class ConversationMember {
     @Builder.Default
     private Boolean isMuted = false;
 
+    @Column(name = "is_archived")
+    @Builder.Default
+    private Boolean isArchived = false;
+
     @PrePersist
     protected void onJoin() {
         this.joinedAt = LocalDateTime.now();

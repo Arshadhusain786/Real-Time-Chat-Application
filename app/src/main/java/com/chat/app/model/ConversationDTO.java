@@ -58,6 +58,8 @@ public class ConversationDTO {
         private String profilePicture;
         @JsonProperty("is_online")
         private Boolean isOnline;
+        @JsonProperty("last_seen")
+        private String lastSeen;
         private String role;
     }
 }

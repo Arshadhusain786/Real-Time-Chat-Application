@@ -272,6 +272,7 @@ function onMessageReceived(payload) {
         }
         // Browser notification if tab is hidden
         if (msg.sender_id !== currentUser.id) {
+            playNotificationSound();
             showBrowserNotification(
                 msg.sender_name || 'New message',
                 msg.message || '📎 Attachment'
@@ -523,8 +524,16 @@ function updateChatHeaderStatus() {
     if (conv.type === 'DIRECT' && conv.members) {
         const other = conv.members.find(m => m.id !== currentUser.id);
         if (other) {
-            statusEl.textContent = other.is_online ? 'online' : 'offline';
-            statusEl.style.color = other.is_online ? '#28a745' : '';
+            if (other.is_online) {
+                statusEl.textContent = 'online';
+                statusEl.style.color = '#28a745';
+            } else if (other.last_seen) {
+                statusEl.textContent = 'last seen ' + formatLastSeen(other.last_seen);
+                statusEl.style.color = '';
+            } else {
+                statusEl.textContent = 'offline';
+                statusEl.style.color = '';
+            }
         }
     } else if (conv.type === 'GROUP' && conv.members) {
         const onlineCount = conv.members.filter(m => m.is_online).length;
@@ -1602,4 +1611,72 @@ function markAsUnread() {
         renderConversationList();
         showToast('Marked as unread', 'success');
     }
+}
+
+
+// ==================== LAST SEEN ====================
+function formatLastSeen(dateStr) {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '';
+    const now = new Date();
+    const diffMs = now - d;
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'just now';
+    if (diffMin < 60) return diffMin + ' min ago';
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return diffHr + 'h ago';
+    return d.toLocaleDateString([], {month:'short', day:'numeric'}) + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+}
+
+// ==================== NOTIFICATION SOUND ====================
+function playNotificationSound() {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = 800;
+        gain.gain.value = 0.1;
+        osc.start();
+        osc.stop(ctx.currentTime + 0.15);
+    } catch (e) { /* audio not available */ }
+}
+
+// ==================== ARCHIVE CONVERSATION ====================
+async function archiveConversation() {
+    if (!activeConversationId) return;
+    const conv = conversations.find(c => c.id == activeConversationId);
+    const isArchived = conv && conv.is_archived;
+    try {
+        const resp = isArchived
+            ? await apiDelete(`/api/conversations/${activeConversationId}/archive`)
+            : await apiPost(`/api/conversations/${activeConversationId}/archive`);
+        if (resp.ok) {
+            if (!isArchived) {
+                // Remove from visible list
+                conversations = conversations.filter(c => c.id != activeConversationId);
+                activeConversationId = null;
+                document.getElementById('activeChatView').style.display = 'none';
+                document.getElementById('emptyState').style.display = '';
+            }
+            renderConversationList();
+            showToast(isArchived ? 'Unarchived' : 'Archived', 'success');
+        }
+    } catch (e) { showToast('Failed', 'error'); }
+}
+
+// ==================== DISAPPEARING MESSAGES ====================
+async function setDisappearingMessages() {
+    if (!activeConversationId) return;
+    const choice = prompt('Set disappearing messages timer:\n\n0 = Off\n5 = 5 minutes\n60 = 1 hour\n1440 = 24 hours\n10080 = 7 days\n\nEnter minutes:');
+    if (choice === null) return;
+    const minutes = parseInt(choice) || 0;
+    try {
+        const resp = await apiPost(`/api/conversations/${activeConversationId}/disappearing`, { minutes: minutes || null });
+        if (resp.ok) {
+            showToast(minutes > 0 ? `Messages disappear after ${minutes} min` : 'Disappearing messages off', 'success');
+        }
+    } catch (e) { showToast('Failed', 'error'); }
 }
