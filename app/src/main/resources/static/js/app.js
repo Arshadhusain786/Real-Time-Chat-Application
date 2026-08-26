@@ -1015,12 +1015,74 @@ async function createGroup() {
 function showGroupInfo() {
     const conv = conversations.find(c => c.id == activeConversationId);
     if (!conv || conv.type !== 'GROUP') return;
-    const members = conv.members || [];
-    const memberList = members.map(m => {
-        const role = m.role !== 'MEMBER' ? ` (${m.role.toLowerCase()})` : '';
-        return `• ${m.display_name || m.displayName || m.username}${role}`;
-    }).join('\n');
-    alert(`Group: ${conv.name}\n${conv.description ? 'Description: ' + conv.description + '\n' : ''}\nMembers (${members.length}):\n${memberList}`);
+
+    document.getElementById('groupPanel').classList.add('open');
+    document.getElementById('groupOverlay').classList.add('open');
+
+    const initials = (conv.name || '?').charAt(0).toUpperCase();
+    document.getElementById('groupAvatarLarge').textContent = initials;
+    document.getElementById('groupPanelName').textContent = conv.name;
+    document.getElementById('groupPanelDesc').textContent = conv.description || 'No description';
+    document.getElementById('groupMemberCount').textContent = conv.members ? conv.members.length : 0;
+
+    const memberList = document.getElementById('groupMemberList');
+    if (!conv.members) { memberList.innerHTML = '<p class="text-muted">No members</p>'; return; }
+
+    memberList.innerHTML = conv.members.map(m => {
+        const isMe = m.id === currentUser.id;
+        const roleLabel = m.role === 'OWNER' ? 'Owner' : m.role === 'ADMIN' ? 'Admin' : '';
+        const roleBadge = roleLabel ? `<span class="member-role">${roleLabel}</span>` : '';
+        const removeBtn = (m.role !== 'OWNER' && !isMe)
+            ? `<button class="btn btn-sm btn-outline-danger" style="font-size:11px;padding:2px 6px" onclick="removeMemberFromGroup(${m.id})">Remove</button>`
+            : '';
+        return `<div class="member-item">
+            <div class="conv-avatar">${(m.displayName || m.username).charAt(0).toUpperCase()}</div>
+            <div class="member-info">
+                <div class="member-name">${escapeHtml(m.displayName || m.username)}${isMe ? ' (You)' : ''}</div>
+                ${roleBadge}
+            </div>
+            ${removeBtn}
+        </div>`;
+    }).join('');
+}
+
+function closeGroupPanel() {
+    document.getElementById('groupPanel').classList.remove('open');
+    document.getElementById('groupOverlay').classList.remove('open');
+}
+
+async function removeMemberFromGroup(userId) {
+    if (!confirm('Remove this member from the group?')) return;
+    try {
+        const resp = await apiDelete(`/api/conversations/${activeConversationId}/members/${userId}`);
+        if (resp.ok) {
+            showToast('Member removed', 'success');
+            await loadConversations();
+            showGroupInfo();
+        } else {
+            const err = await resp.json();
+            showToast(err.error || 'Failed to remove', 'error');
+        }
+    } catch (e) { showToast('Error removing member', 'error'); }
+}
+
+async function leaveGroup() {
+    if (!confirm('Leave this group? You won\'t receive messages anymore.')) return;
+    try {
+        const resp = await apiDelete(`/api/conversations/${activeConversationId}/members/${currentUser.id}`);
+        if (resp.ok) {
+            closeGroupPanel();
+            conversations = conversations.filter(c => c.id != activeConversationId);
+            activeConversationId = null;
+            document.getElementById('activeChatView').style.display = 'none';
+            document.getElementById('emptyState').style.display = '';
+            renderConversationList();
+            showToast('Left group', 'success');
+        } else {
+            const err = await resp.json();
+            showToast(err.error || 'Failed to leave', 'error');
+        }
+    } catch (e) { showToast('Error leaving group', 'error'); }
 }
 
 // ==================== DELETE / BLOCK ACTIONS ====================
@@ -1213,3 +1275,105 @@ function showBrowserNotification(title, body) {
 
 // Request notification permission after login
 if (currentUser) requestNotificationPermission();
+
+
+// ==================== PROFILE / SETTINGS PANEL ====================
+function openProfilePanel() {
+    document.getElementById('profilePanel').classList.add('open');
+    document.getElementById('profileOverlay').classList.add('open');
+    const initials = (currentUser.displayName || currentUser.username).charAt(0).toUpperCase();
+    document.getElementById('profileAvatarLarge').innerHTML = currentUser.profilePicture
+        ? `<img src="${currentUser.profilePicture}" alt=""><div class="avatar-upload-btn" onclick="document.getElementById('avatarInput').click()"><i class="bi bi-camera"></i></div>`
+        : `${initials}<div class="avatar-upload-btn" onclick="document.getElementById('avatarInput').click()"><i class="bi bi-camera"></i></div>`;
+    document.getElementById('profileDisplayName').textContent = currentUser.displayName || currentUser.username;
+    document.getElementById('profileUsername').textContent = '@' + currentUser.username;
+    document.getElementById('settingsDisplayName').textContent = currentUser.displayName || currentUser.username;
+    document.getElementById('settingsStatus').textContent = currentUser.status || 'Available';
+    document.getElementById('darkModeStatus').textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? 'On' : 'Off';
+}
+
+function closeProfilePanel() {
+    document.getElementById('profilePanel').classList.remove('open');
+    document.getElementById('profileOverlay').classList.remove('open');
+}
+
+async function editDisplayName() {
+    const newName = prompt('Enter new display name:', currentUser.displayName || '');
+    if (newName && newName.trim()) {
+        try {
+            const resp = await apiPut('/api/users/profile', { displayName: newName.trim() });
+            if (resp.ok) {
+                const data = await resp.json();
+                currentUser.displayName = data.displayName;
+                sessionStorage.setItem('chat_user', JSON.stringify(currentUser));
+                document.getElementById('profileDisplayName').textContent = data.displayName;
+                document.getElementById('settingsDisplayName').textContent = data.displayName;
+                document.getElementById('myAvatar').textContent = data.displayName.charAt(0).toUpperCase();
+                showToast('Display name updated', 'success');
+            }
+        } catch (e) { showToast('Failed to update', 'error'); }
+    }
+}
+
+async function editStatus() {
+    const newStatus = prompt('Enter status message:', currentUser.status || 'Available');
+    if (newStatus !== null) {
+        try {
+            const resp = await apiPut('/api/users/profile', { status: newStatus.trim() || 'Available' });
+            if (resp.ok) {
+                const data = await resp.json();
+                currentUser.status = data.status;
+                sessionStorage.setItem('chat_user', JSON.stringify(currentUser));
+                document.getElementById('settingsStatus').textContent = data.status;
+                showToast('Status updated', 'success');
+            }
+        } catch (e) { showToast('Failed to update', 'error'); }
+    }
+}
+
+async function uploadAvatar(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    event.target.value = '';
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const uploadResp = await fetch('/api/upload', { method: 'POST', headers: {'Authorization': 'Bearer ' + token}, body: formData });
+        if (!uploadResp.ok) { showToast('Upload failed', 'error'); return; }
+        const uploadData = await uploadResp.json();
+        const resp = await apiPut('/api/users/profile', { profilePicture: uploadData.url });
+        if (resp.ok) {
+            currentUser.profilePicture = uploadData.url;
+            sessionStorage.setItem('chat_user', JSON.stringify(currentUser));
+            openProfilePanel();
+            showToast('Avatar updated', 'success');
+        }
+    } catch (e) { showToast('Failed to upload avatar', 'error'); }
+}
+
+async function viewBlockedUsers() {
+    try {
+        const resp = await apiGet('/api/users/blocked');
+        if (resp.ok) {
+            const blocked = await resp.json();
+            if (blocked.length === 0) { alert('No blocked users'); return; }
+            const list = blocked.map(b => `• ${b.displayName || b.username}`).join('\n');
+            alert('Blocked Users:\n' + list);
+        }
+    } catch (e) { showToast('Failed to load', 'error'); }
+}
+
+// ==================== DARK MODE ====================
+function toggleDarkMode() {
+    const html = document.documentElement;
+    const isDark = html.getAttribute('data-theme') === 'dark';
+    html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+    localStorage.setItem('chat_theme', isDark ? 'light' : 'dark');
+    document.getElementById('darkModeStatus').textContent = isDark ? 'Off' : 'On';
+}
+
+// Apply saved theme on load
+(function() {
+    const saved = localStorage.getItem('chat_theme');
+    if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+})();
