@@ -165,12 +165,12 @@ function startPolling() {
         if (!token) return;
         try {
             await loadConversations();
-            // If a conversation is open and WebSocket is disconnected, reload messages
+            // Only reload messages if WebSocket is dead AND conversation is open
             if (activeConversationId && (!stompClient || !stompClient.connected)) {
                 await loadMessages(activeConversationId);
             }
         } catch (e) { /* silent */ }
-    }, 15000);
+    }, 30000);
 }
 
 // ==================== API HELPERS ====================
@@ -251,13 +251,13 @@ function onMessageReceived(payload) {
     if (convId == activeConversationId) {
         // Skip if it's our own message (already shown optimistically)
         if (msg.sender_id === currentUser.id) {
-            // Remove the temp optimistic message and replace with real one
+            // Remove the temp optimistic message and replace with server-confirmed one
             const tempMsgs = document.querySelectorAll('[id^="msg-temp-"]');
             if (tempMsgs.length > 0) {
                 tempMsgs[0].remove();
             }
         }
-        appendMessage(msg);
+        appendMessage(msg); // dedup built into appendMessage
         scrollToBottom();
         // Auto mark as read if window focused and not our own message
         if (document.hasFocus() && msg.sender_id !== currentUser.id) {
@@ -321,7 +321,7 @@ function onConversationReceived(payload) {
     const conv = JSON.parse(payload.body);
     const existingIdx = conversations.findIndex(c => c.id === conv.id);
     if (existingIdx >= 0) {
-        // Update existing conversation (new message arrived, sidebar update)
+        // Update sidebar data only (NOT messages — those come via /queue/messages)
         const existing = conversations[existingIdx];
         if (conv.last_message) existing.last_message = conv.last_message;
         if (conv.updated_at) existing.updated_at = conv.updated_at;
@@ -522,6 +522,8 @@ async function loadMessages(convId) {
 // ==================== MESSAGE RENDERING ====================
 function appendMessage(msg) {
     const container = document.getElementById('chatMessages');
+    // DEDUP: Skip if message with this ID already exists in DOM
+    if (msg.id && document.getElementById('msg-' + msg.id)) return;
     const isOwn = msg.sender_id === currentUser.id;
 
     const div = document.createElement('div');
