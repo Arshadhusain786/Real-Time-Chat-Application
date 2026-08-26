@@ -4,17 +4,14 @@ WORKDIR /app
 COPY app/pom.xml .
 RUN mvn dependency:go-offline -q
 COPY app/src ./src
-RUN mvn clean package -DskipTests -q
+RUN mvn clean package -DskipTests
 
 # Run stage
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
-
-# Create uploads directory
 RUN mkdir -p /app/uploads
 
-# Render uses PORT env var
 ENV PORT=8081
 ENV TZ=Asia/Kolkata
 EXPOSE ${PORT}
