@@ -44,4 +44,13 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
     @Transactional
     @Query("DELETE FROM ChatMessage m WHERE m.conversation.id = :conversationId")
     void deleteByConversationId(@Param("conversationId") Long conversationId);
+
+    @Query("SELECT m FROM ChatMessage m WHERE m.conversation.id = :conversationId " +
+           "AND LOWER(m.message) LIKE LOWER(CONCAT('%', :query, '%')) ORDER BY m.sentAt DESC")
+    List<ChatMessage> searchMessages(@Param("conversationId") Long conversationId, @Param("query") String query);
+
+    @Query("SELECT m FROM ChatMessage m JOIN m.conversation c JOIN c.members cm " +
+           "WHERE cm.user.id = :userId AND LOWER(m.message) LIKE LOWER(CONCAT('%', :query, '%')) " +
+           "ORDER BY m.sentAt DESC")
+    List<ChatMessage> searchAllUserMessages(@Param("userId") Long userId, @Param("query") String query, Pageable pageable);
 }

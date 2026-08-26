@@ -152,6 +152,51 @@ public class ChatMessageService {
         log.info("All messages cleared from conversation {}", conversationId);
     }
 
+    @Transactional(readOnly = true)
+    public List<ChatMessageDTO> searchInConversation(Long conversationId, String query) {
+        return messageRepository.searchMessages(conversationId, query).stream()
+                .limit(50)
+                .map(ChatMessage::toDTO)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ChatMessageDTO> searchAllMessages(Long userId, String query) {
+        return messageRepository.searchAllUserMessages(userId, query,
+                org.springframework.data.domain.PageRequest.of(0, 50)).stream()
+                .map(ChatMessage::toDTO)
+                .toList();
+    }
+
+    @Transactional
+    public ChatMessage forwardMessage(Long messageId, Long senderId, Long targetConversationId) {
+        ChatMessage original = messageRepository.findById(messageId)
+                .orElseThrow(() -> new RuntimeException("Message not found"));
+        if (original.getIsDeleted()) throw new IllegalStateException("Cannot forward deleted message");
+
+        User sender = userService.getUserById(senderId);
+        Conversation target = conversationRepository.findById(targetConversationId)
+                .orElseThrow(() -> new RuntimeException("Conversation not found"));
+
+        String forwardedText = original.getMessage() != null ? original.getMessage() : "";
+
+        ChatMessage forwarded = ChatMessage.builder()
+                .sender(sender)
+                .conversation(target)
+                .message(forwardedText)
+                .messageType(original.getMessageType())
+                .attachmentUrl(original.getAttachmentUrl())
+                .attachmentName(original.getAttachmentName())
+                .attachmentSize(original.getAttachmentSize())
+                .isRead(false)
+                .deliveryStatus("SENT")
+                .build();
+
+        target.setUpdatedAt(java.time.LocalDateTime.now());
+        conversationRepository.save(target);
+        return messageRepository.save(forwarded);
+    }
+
     private String sanitizeInput(String input) {
         if (input == null) return "";
         // Replace dangerous HTML characters

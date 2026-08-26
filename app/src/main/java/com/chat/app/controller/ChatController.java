@@ -342,6 +342,10 @@ public class ChatController {
                     .collect(Collectors.toList());
             dto.setMembers(memberDtos);
 
+            // Pin/Mute status for current user
+            dto.setIsPinned(conversationService.isPinned(conv.getId(), currentUser.getId()));
+            dto.setIsMuted(conversationService.isMuted(conv.getId(), currentUser.getId()));
+
             return dto;
         }).toList();
 
@@ -514,6 +518,84 @@ public class ChatController {
     @GetMapping("/chat")
     public String chat() {
         return "chat";
+    }
+
+    // ==================== SEARCH / FORWARD / PIN / MUTE ====================
+
+    @GetMapping("/api/messages/search")
+    @ResponseBody
+    public ResponseEntity<?> searchMessages(
+            @RequestParam String query,
+            @RequestParam(required = false) Long conversationId) {
+        User currentUser = getAuthenticatedUser();
+        if (query == null || query.trim().length() < 2) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Query too short"));
+        }
+        List<ChatMessageDTO> results;
+        if (conversationId != null) {
+            if (!conversationService.isMember(conversationId, currentUser.getId())) {
+                return ResponseEntity.status(403).body(Map.of("error", "Access denied"));
+            }
+            results = chatMessageService.searchInConversation(conversationId, query.trim());
+        } else {
+            results = chatMessageService.searchAllMessages(currentUser.getId(), query.trim());
+        }
+        return ResponseEntity.ok(results);
+    }
+
+    @PostMapping("/api/messages/{messageId}/forward/{targetConversationId}")
+    @ResponseBody
+    public ResponseEntity<?> forwardMessage(@PathVariable Long messageId, @PathVariable Long targetConversationId) {
+        User currentUser = getAuthenticatedUser();
+        if (!conversationService.isMember(targetConversationId, currentUser.getId())) {
+            return ResponseEntity.status(403).body(Map.of("error", "Access denied"));
+        }
+        try {
+            ChatMessage forwarded = chatMessageService.forwardMessage(messageId, currentUser.getId(), targetConversationId);
+            ChatMessageDTO dto = forwarded.toDTO();
+            // Deliver via WebSocket
+            Conversation targetConv = conversationService.getConversationById(targetConversationId);
+            for (ConversationMember member : targetConv.getMembers()) {
+                try {
+                    messagingTemplate.convertAndSendToUser(member.getUser().getUsername(), "/queue/messages", dto);
+                } catch (Exception ex) { /* non-critical */ }
+            }
+            return ResponseEntity.ok(dto);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/api/conversations/{conversationId}/pin")
+    @ResponseBody
+    public ResponseEntity<?> pinConversation(@PathVariable Long conversationId) {
+        User currentUser = getAuthenticatedUser();
+        conversationService.setPinned(conversationId, currentUser.getId(), true);
+        return ResponseEntity.ok(Map.of("message", "Conversation pinned"));
+    }
+
+    @DeleteMapping("/api/conversations/{conversationId}/pin")
+    @ResponseBody
+    public ResponseEntity<?> unpinConversation(@PathVariable Long conversationId) {
+        User currentUser = getAuthenticatedUser();
+        conversationService.setPinned(conversationId, currentUser.getId(), false);
+        return ResponseEntity.ok(Map.of("message", "Conversation unpinned"));
+    }
+
+    @PostMapping("/api/conversations/{conversationId}/mute")
+    @ResponseBody
+    public ResponseEntity<?> muteConversation(@PathVariable Long conversationId) {
+        User currentUser = getAuthenticatedUser();
+        conversationService.setMuted(conversationId, currentUser.getId(), true);
+        return ResponseEntity.ok(Map.of("message", "Conversation muted"));
+    }
+
+    @DeleteMapping("/api/conversations/{conversationId}/mute")
+    @ResponseBody
+    public ResponseEntity<?> unmuteConversation(@PathVariable Long conversationId) {
+        User currentUser = getAuthenticatedUser();
+        conversationService.setMuted(conversationId, currentUser.getId(), false);
+        return ResponseEntity.ok(Map.of("message", "Conversation unmuted"));
     }
 
     // ==================== DELETE / BLOCK ENDPOINTS ====================

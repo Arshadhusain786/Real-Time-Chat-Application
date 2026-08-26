@@ -34,7 +34,14 @@ public class ConversationDTO {
     private ChatMessageDTO lastMessage;
 
     @JsonProperty("member_count")
+    @JsonProperty("member_count")
     private Integer memberCount;
+
+    @JsonProperty("is_pinned")
+    private Boolean isPinned;
+
+    @JsonProperty("is_muted")
+    private Boolean isMuted;
 
     private List<MemberDTO> members;
 

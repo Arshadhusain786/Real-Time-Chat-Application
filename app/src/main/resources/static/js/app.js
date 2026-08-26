@@ -387,6 +387,12 @@ function renderConversationList() {
     if (search) {
         filtered = conversations.filter(c => (c.name || '').toLowerCase().includes(search));
     }
+    // Sort: pinned first, then by last message time
+    filtered = [...filtered].sort((a, b) => {
+        if (a.is_pinned && !b.is_pinned) return -1;
+        if (!a.is_pinned && b.is_pinned) return 1;
+        return 0;
+    });
 
     list.innerHTML = filtered.map(conv => {
         const isActive = conv.id == activeConversationId;
@@ -421,6 +427,8 @@ function renderConversationList() {
             </div>
             <div class="conv-meta">
                 <span class="conv-time">${timeStr}</span>
+                ${conv.is_pinned ? '<i class="bi bi-pin-fill" style="font-size:10px;color:var(--text-muted)"></i>' : ''}
+                ${conv.is_muted ? '<i class="bi bi-bell-slash-fill" style="font-size:10px;color:var(--text-muted)"></i>' : ''}
                 ${unread > 0 ? `<span class="unread-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
             </div>
         </div>`;
@@ -600,6 +608,8 @@ function appendMessage(msg) {
     if (!msg.is_deleted) {
         let actions = `<button class="msg-action-btn" onclick="replyToMessage(${msg.id}, '${escapeAttr(msg.sender_name || '')}', '${escapeAttr((msg.message||'').substring(0,50))}')" title="Reply"><i class="bi bi-reply"></i></button>`;
         actions += `<button class="msg-action-btn" onclick="showEmojiForMsg(event, ${msg.id})" title="React"><i class="bi bi-emoji-smile"></i></button>`;
+        actions += `<button class="msg-action-btn" onclick="copyMessage(${msg.id})" title="Copy"><i class="bi bi-clipboard"></i></button>`;
+        actions += `<button class="msg-action-btn" onclick="forwardMessage(${msg.id})" title="Forward"><i class="bi bi-forward"></i></button>`;
         if (isOwn) {
             if (msg.message_type === 'TEXT' || !msg.message_type) {
                 actions += `<button class="msg-action-btn" onclick="editMessage(${msg.id})" title="Edit"><i class="bi bi-pencil"></i></button>`;
@@ -1117,6 +1127,83 @@ async function leaveGroup() {
             showToast(err.error || 'Failed to leave', 'error');
         }
     } catch (e) { showToast('Error leaving group', 'error'); }
+}
+
+// ==================== COPY / FORWARD / SEARCH / PIN / MUTE ====================
+function copyMessage(msgId) {
+    const el = document.getElementById('msg-' + msgId);
+    if (!el) return;
+    const textEl = el.querySelector('.message-text');
+    if (!textEl) return;
+    navigator.clipboard.writeText(textEl.textContent).then(() => {
+        showToast('Copied to clipboard', 'success');
+    }).catch(() => showToast('Failed to copy', 'error'));
+}
+
+async function forwardMessage(msgId) {
+    if (!conversations || conversations.length === 0) return;
+    const list = conversations.filter(c => c.id != activeConversationId)
+        .map(c => `${c.id}: ${c.name || 'Chat'}`).join('\n');
+    const targetId = prompt('Enter conversation ID to forward to:\n\n' + list);
+    if (!targetId) return;
+    try {
+        const resp = await apiPost(`/api/messages/${msgId}/forward/${targetId.trim()}`);
+        if (resp.ok) {
+            showToast('Message forwarded', 'success');
+        } else {
+            const err = await resp.json();
+            showToast(err.error || 'Forward failed', 'error');
+        }
+    } catch (e) { showToast('Forward failed', 'error'); }
+}
+
+async function searchMessagesInChat() {
+    const query = prompt('Search messages:');
+    if (!query || query.trim().length < 2) return;
+    try {
+        let url = `/api/messages/search?query=${encodeURIComponent(query.trim())}`;
+        if (activeConversationId) url += `&conversationId=${activeConversationId}`;
+        const resp = await apiGet(url);
+        if (resp.ok) {
+            const results = await resp.json();
+            if (results.length === 0) { showToast('No messages found', 'info'); return; }
+            const container = document.getElementById('chatMessages');
+            container.innerHTML = `<div style="padding:12px;text-align:center;color:var(--primary);font-weight:600">
+                Search results for "${escapeHtml(query.trim())}" (${results.length})</div>`;
+            results.forEach(msg => appendMessage(msg));
+        }
+    } catch (e) { showToast('Search failed', 'error'); }
+}
+
+async function pinConversation() {
+    if (!activeConversationId) return;
+    const conv = conversations.find(c => c.id == activeConversationId);
+    const isPinned = conv && conv.is_pinned;
+    try {
+        const resp = isPinned
+            ? await apiDelete(`/api/conversations/${activeConversationId}/pin`)
+            : await apiPost(`/api/conversations/${activeConversationId}/pin`);
+        if (resp.ok) {
+            if (conv) conv.is_pinned = !isPinned;
+            renderConversationList();
+            showToast(isPinned ? 'Unpinned' : 'Pinned', 'success');
+        }
+    } catch (e) { showToast('Failed', 'error'); }
+}
+
+async function muteConversation() {
+    if (!activeConversationId) return;
+    const conv = conversations.find(c => c.id == activeConversationId);
+    const isMuted = conv && conv.is_muted;
+    try {
+        const resp = isMuted
+            ? await apiDelete(`/api/conversations/${activeConversationId}/mute`)
+            : await apiPost(`/api/conversations/${activeConversationId}/mute`);
+        if (resp.ok) {
+            if (conv) conv.is_muted = !isMuted;
+            showToast(isMuted ? 'Unmuted' : 'Muted', 'success');
+        }
+    } catch (e) { showToast('Failed', 'error'); }
 }
 
 // ==================== DELETE / BLOCK ACTIONS ====================

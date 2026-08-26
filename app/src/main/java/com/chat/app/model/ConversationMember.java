@@ -48,6 +48,14 @@ public class ConversationMember {
     @Column(name = "last_read_at")
     private LocalDateTime lastReadAt;
 
+    @Column(name = "is_pinned")
+    @Builder.Default
+    private Boolean isPinned = false;
+
+    @Column(name = "is_muted")
+    @Builder.Default
+    private Boolean isMuted = false;
+
     @PrePersist
     protected void onJoin() {
         this.joinedAt = LocalDateTime.now();

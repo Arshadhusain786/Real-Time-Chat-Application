@@ -199,6 +199,34 @@ public class ConversationService {
         log.info("Conversation {} deleted by user {}", conversationId, userId);
     }
 
+    // ==================== PIN / MUTE ====================
+
+    @Transactional
+    public void setPinned(Long conversationId, Long userId, boolean pinned) {
+        ConversationMember cm = verifyMembership(conversationId, userId);
+        cm.setIsPinned(pinned);
+        memberRepo.save(cm);
+    }
+
+    @Transactional
+    public void setMuted(Long conversationId, Long userId, boolean muted) {
+        ConversationMember cm = verifyMembership(conversationId, userId);
+        cm.setIsMuted(muted);
+        memberRepo.save(cm);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isPinned(Long conversationId, Long userId) {
+        return memberRepo.findByConversationIdAndUserId(conversationId, userId)
+                .map(cm -> Boolean.TRUE.equals(cm.getIsPinned())).orElse(false);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isMuted(Long conversationId, Long userId) {
+        return memberRepo.findByConversationIdAndUserId(conversationId, userId)
+                .map(cm -> Boolean.TRUE.equals(cm.getIsMuted())).orElse(false);
+    }
+
     // ==================== BLOCK / UNBLOCK ====================
 
     @Transactional
